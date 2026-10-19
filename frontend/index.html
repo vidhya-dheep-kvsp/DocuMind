@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DocuMind — Grounded answers from your paper</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Caveat:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.5/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<style>
+  :root {
+    --paper: #FAFAF7;
+    --paper-raised: #FFFFFF;
+    --ink: #14181F;
+    --ink-soft: #40454F;
+    --highlighter: #F5C518;
+    --highlighter-soft: #FBF0C4;
+    --pen: #C1432E;
+    --slate: #6B7280;
+    --grounded: #0B6E4F;
+    --grounded-soft: #E1F0EA;
+    --rule: #E3E1D8;
+    --error: #C1432E;
+    --error-bg: #FBEAE6;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    background-image:
+      linear-gradient(var(--rule) 1px, transparent 1px);
+    background-size: 100% 42px;
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  .shell {
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 36px 24px 60px;
+  }
+
+  /* ---- Header ---- */
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 20px;
+    border-bottom: 2.5px solid var(--ink);
+  }
+
+  .brand .mark {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 700;
+    font-size: 26px;
+    letter-spacing: -0.02em;
+  }
+  .brand .mark span { color: var(--pen); }
+
+  .brand .tagline {
+    font-size: 13px;
+    color: var(--slate);
+    margin-top: 4px;
+  }
+
+  .stamp {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--grounded);
+    border: 1.5px solid var(--grounded);
+    border-radius: 3px;
+    padding: 5px 10px;
+    transform: rotate(3deg);
+    white-space: nowrap;
+    margin-top: 2px;
+  }
+
+  /* ---- Upload card ---- */
+  .upload-card {
+    position: relative;
+    margin-top: 32px;
+    background: var(--paper-raised);
+    border: 2px dashed var(--rule);
+    border-radius: 3px;
+    padding: 44px 28px;
+    text-align: center;
+    transition: border-color 0.15s ease, background 0.15s ease;
+    cursor: pointer;
+  }
+
+  .upload-card::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-2deg);
+    width: 34px;
+    height: 14px;
+    background: var(--ink);
+    border-radius: 0 0 3px 3px;
+    opacity: 0.85;
+  }
+
+  .upload-card:hover, .upload-card.dragover {
+    border-color: var(--pen);
+    background: #FFFDF7;
+  }
+
+  .upload-card h2 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 17px;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+
+  .upload-card .sub {
+    color: var(--slate);
+    font-size: 13px;
+  }
+
+  .upload-limit {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--slate);
+    margin-top: 14px;
+    letter-spacing: 0.02em;
+  }
+
+  .upload-card input[type=file] { display: none; }
+
+  /* ---- Error banner ---- */
+  .error-banner {
+    display: none;
+    margin-top: 14px;
+    background: var(--error-bg);
+    color: var(--error);
+    border-left: 3px solid var(--error);
+    padding: 12px 16px;
+    font-size: 13.5px;
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .error-banner.show { display: block; }
+
+  /* ---- Document bar ---- */
+  .doc-bar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 28px;
+    padding: 14px 18px;
+    background: var(--paper-raised);
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+  }
+  .doc-bar.show { display: flex; }
+
+  .doc-bar .filename-wrap {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+    word-break: break-all;
+  }
+
+  .doc-bar .filename {
+    font-weight: 600;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .doc-bar .filename-wrap::before {
+    content: "";
+    position: absolute;
+    left: -3px;
+    right: -3px;
+    bottom: 1px;
+    height: 40%;
+    background: var(--highlighter);
+    z-index: 0;
+    transform: scaleX(0);
+    transform-origin: left;
+    animation: swipe 0.5s ease-out 0.15s forwards;
+  }
+
+  @keyframes swipe {
+    to { transform: scaleX(1); }
+  }
+
+  .doc-bar .meta {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--slate);
+    font-size: 11.5px;
+    margin-top: 3px;
+  }
+
+  .doc-bar button {
+    background: none;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 7px 12px;
+    font-size: 12px;
+    color: var(--ink);
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+  }
+  .doc-bar button:hover { background: var(--ink); color: var(--paper); }
+
+  /* ---- Chat ---- */
+  .chat {
+    display: none;
+    margin-top: 24px;
+  }
+  .chat.show { display: block; }
+
+  .messages {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 20px;
+  }
+
+  .msg-row {
+    display: grid;
+    grid-template-columns: 1fr 180px;
+    gap: 18px;
+    align-items: start;
+    padding: 14px 0;
+    border-bottom: 1px dashed var(--rule);
+  }
+
+  .msg {
+    display: flex;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .msg .role-tag {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .msg.user .role-tag { background: var(--ink); color: var(--paper); }
+  .msg.assistant .role-tag { background: var(--grounded); color: var(--paper); }
+
+  .msg .bubble {
+    padding-top: 3px;
+    line-height: 1.65;
+    font-size: 14.5px;
+    min-width: 0;
+    word-wrap: break-word;
+  }
+
+  .msg .bubble .not-covered {
+    color: var(--pen);
+    font-style: italic;
+  }
+
+  /* ---- Rendered markdown inside assistant answers ---- */
+  .bubble h1, .bubble h2, .bubble h3 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    margin: 14px 0 6px;
+    line-height: 1.3;
+  }
+  .bubble h1 { font-size: 17px; }
+  .bubble h2 { font-size: 15.5px; }
+  .bubble h3 { font-size: 14.5px; color: var(--ink-soft); }
+  .bubble > *:first-child { margin-top: 0; }
+
+  .bubble p { margin: 0 0 10px; }
+  .bubble p:last-child { margin-bottom: 0; }
+
+  .bubble strong { font-weight: 600; color: var(--ink); }
+  .bubble em { color: var(--ink-soft); }
+
+  .bubble ul, .bubble ol {
+    margin: 0 0 10px;
+    padding-left: 22px;
+  }
+  .bubble li { margin-bottom: 4px; }
+
+  .bubble code {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    background: var(--highlighter-soft);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  .bubble pre {
+    background: var(--ink);
+    color: var(--paper);
+    padding: 12px 14px;
+    border-radius: 3px;
+    overflow-x: auto;
+    margin: 0 0 10px;
+  }
+  .bubble pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+
+  .bubble hr {
+    border: none;
+    border-top: 1px dashed var(--rule);
+    margin: 14px 0;
+  }
+
+  .bubble table {
+    border-collapse: collapse;
+    margin: 0 0 10px;
+    font-size: 13.5px;
+  }
+  .bubble th, .bubble td {
+    border: 1px solid var(--rule);
+    padding: 5px 9px;
+    text-align: left;
+  }
+  .bubble th { background: var(--paper); font-family: 'IBM Plex Mono', monospace; }
+
+  .bubble .katex-display {
+    margin: 10px 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  /* ---- Margin annotation rail ---- */
+  .margin-slot {
+    padding-top: 6px;
+  }
+
+  .tag {
+    font-family: 'Caveat', cursive;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--pen);
+    line-height: 1.25;
+    position: relative;
+    padding-left: 14px;
+  }
+
+  .tag::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 6px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--highlighter);
+    border: 1.5px solid var(--pen);
+  }
+
+  .tag-empty {
+    display: none;
+  }
+
+  /* ---- Input row ---- */
+  .input-row {
+    display: flex;
+    gap: 10px;
+    position: sticky;
+    bottom: 16px;
+    background: var(--paper);
+    padding-top: 6px;
+  }
+
+  .input-row textarea {
+    flex: 1;
+    resize: none;
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 12px 14px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    background: var(--paper-raised);
+    color: var(--ink);
+    min-height: 46px;
+    max-height: 140px;
+  }
+  .input-row textarea:focus {
+    outline: none;
+    border-color: var(--pen);
+    box-shadow: 0 0 0 3px rgba(193, 67, 46, 0.12);
+  }
+  .input-row textarea::placeholder { color: var(--slate); }
+
+  .input-row button {
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 3px;
+    padding: 0 22px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  .input-row button:hover:not(:disabled) { background: var(--pen); }
+  .input-row button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .input-row button:focus-visible, .upload-card:focus-visible, .doc-bar button:focus-visible {
+    outline: 2px solid var(--pen);
+    outline-offset: 2px;
+  }
+
+  .thinking {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--slate);
+    padding: 4px 0 10px 42px;
+  }
+  .thinking::after {
+    content: "";
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--grounded);
+    margin-left: 6px;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 1; }
+  }
+
+  @media (max-width: 640px) {
+    .shell { padding: 22px 16px 40px; }
+    .brand .mark { font-size: 21px; }
+    .stamp { display: none; }
+    .upload-card { padding: 32px 18px; }
+    .doc-bar {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .doc-bar button { align-self: flex-start; }
+    .msg-row {
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .margin-slot { padding-top: 0; padding-left: 42px; }
+    .tag { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand">
+      <div class="mark">Docu<span>Mind</span></div>
+      <div class="tagline">answers traced back to the page they came from</div>
+    </div>
+    <div class="stamp">grounded, not guessed</div>
+  </header>
+
+  <div class="upload-card" id="uploadCard" tabindex="0" role="button" aria-label="Upload a PDF">
+    <h2>Drop a research paper here, or click to browse</h2>
+    <div class="sub">PDF only</div>
+    <div class="upload-limit">MAX 25 PAGES · MAX 10MB</div>
+    <input type="file" id="fileInput" accept="application/pdf">
+  </div>
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="doc-bar" id="docBar">
+    <div>
+      <div class="filename-wrap"><span class="filename" id="docFilename"></span></div>
+      <div class="meta" id="docMeta"></div>
+    </div>
+    <button id="newDocBtn">Upload a different PDF</button>
+  </div>
+
+  <div class="chat" id="chat">
+    <div class="messages" id="messages"></div>
+    <div class="thinking" id="thinking" style="display:none;">reading the paper</div>
+    <div class="input-row">
+      <textarea id="questionInput" placeholder="Ask something about this document…" rows="1"></textarea>
+      <button id="sendBtn">Ask</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const MAX_FILE_MB = 10;
+let sessionId = null;
+
+const uploadCard = document.getElementById('uploadCard');
+const fileInput = document.getElementById('fileInput');
+const errorBanner = document.getElementById('errorBanner');
+const docBar = document.getElementById('docBar');
+const docFilename = document.getElementById('docFilename');
+const docMeta = document.getElementById('docMeta');
+const chat = document.getElementById('chat');
+const messagesEl = document.getElementById('messages');
+const questionInput = document.getElementById('questionInput');
+const sendBtn = document.getElementById('sendBtn');
+const thinking = document.getElementById('thinking');
+const newDocBtn = document.getElementById('newDocBtn');
+
+function showError(msg) {
+  errorBanner.textContent = msg;
+  errorBanner.classList.add('show');
+}
+function clearError() {
+  errorBanner.classList.remove('show');
+}
+
+// ---- Upload interactions ----
+uploadCard.addEventListener('click', () => fileInput.click());
+uploadCard.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
+});
+uploadCard.addEventListener('dragover', (e) => { e.preventDefault(); uploadCard.classList.add('dragover'); });
+uploadCard.addEventListener('dragleave', () => uploadCard.classList.remove('dragover'));
+uploadCard.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadCard.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) handleFile(fileInput.files[0]);
+});
+
+async function handleFile(file) {
+  clearError();
+
+  if (file.type !== 'application/pdf') {
+    showError('Only PDF files are supported. Try exporting or saving this file as a PDF first.');
+    return;
+  }
+  const sizeMB = file.size / (1024 * 1024);
+  if (sizeMB > MAX_FILE_MB) {
+    showError(`This file is ${sizeMB.toFixed(1)}MB. The limit is ${MAX_FILE_MB}MB — try a shorter document or a specific section.`);
+    return;
+  }
+
+  uploadCard.querySelector('h2').textContent = 'Reading the document…';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showError((data.detail && data.detail.message) || 'Upload failed. Please try again.');
+      uploadCard.querySelector('h2').textContent = 'Drop a research paper here, or click to browse';
+      return;
+    }
+
+    sessionId = data.session_id;
+    docFilename.textContent = data.filename;
+    docMeta.textContent = `${data.page_count} pages · ~${data.estimated_tokens.toLocaleString()} tokens`;
+    docBar.classList.add('show');
+    chat.classList.add('show');
+    uploadCard.style.display = 'none';
+    questionInput.focus();
+  } catch (err) {
+    showError('Could not reach the server. Is the backend running?');
+    uploadCard.querySelector('h2').textContent = 'Drop a research paper here, or click to browse';
+  }
+}
+
+newDocBtn.addEventListener('click', () => {
+  sessionId = null;
+  docBar.classList.remove('show');
+  chat.classList.remove('show');
+  messagesEl.innerHTML = '';
+  uploadCard.style.display = 'block';
+  uploadCard.querySelector('h2').textContent = 'Drop a research paper here, or click to browse';
+  fileInput.value = '';
+});
+
+// ---- Markdown + LaTeX rendering for assistant answers ----
+// Gemini often formats answers with both Markdown (headers, bold, lists)
+// AND LaTeX math notation (research papers are full of formulas). These
+// are different syntaxes, and naively running Markdown alone on LaTeX
+// text causes visible breakage: LaTeX subscripts like d_{model} use
+// underscores, which Markdown's parser also uses for italics, corrupting
+// both. We protect math segments with plain alphanumeric placeholders
+// before Markdown runs, render them separately with KaTeX, then splice
+// the rendered math back into the final HTML.
+function renderAssistantText(bubbleEl, rawText) {
+  const mathSegments = [];
+
+  const withPlaceholders = rawText
+    // Block math: $$...$$
+    .replace(/\$\$([\s\S]+?)\$\$/g, (_, expr) => {
+      mathSegments.push({ expr, displayMode: true });
+      return `XMATHPLACEHOLDER${mathSegments.length - 1}X`;
+    })
+    // Inline math: $...$ (not spanning blank lines, avoids false positives)
+    .replace(/\$([^\$\n]+?)\$/g, (_, expr) => {
+      mathSegments.push({ expr, displayMode: false });
+      return `XMATHPLACEHOLDER${mathSegments.length - 1}X`;
+    });
+
+  let html = DOMPurify.sanitize(marked.parse(withPlaceholders));
+
+  mathSegments.forEach((seg, i) => {
+    let rendered;
+    try {
+      rendered = katex.renderToString(seg.expr, { throwOnError: false, displayMode: seg.displayMode });
+    } catch (e) {
+      rendered = seg.expr; // fall back to raw text if KaTeX can't parse it
+    }
+    // Not re-sanitized: KaTeX's renderToString is designed to produce
+    // safe, self-contained markup (including SVG for symbols like sqrt)
+    // with no script execution path, and running DOMPurify's default
+    // ruleset on it here would strip the SVG parts it needs to render
+    // correctly.
+    html = html.replace(`XMATHPLACEHOLDER${i}X`, rendered);
+  });
+
+  bubbleEl.innerHTML = html;
+}
+
+// ---- Citation-tag extraction (presentational only) ----
+// Our system prompt asks the model to reference the relevant section of
+// the document when possible. This scans the model's own answer text for
+// that kind of reference and surfaces it as a margin annotation -- it
+// never invents a location, it only surfaces what the model already said.
+function extractCitationTag(answerText) {
+  if (/doesn't cover that/i.test(answerText)) {
+    return 'not in doc';
+  }
+  const patterns = [
+    /\b(Section|Table|Figure|Appendix)\s+[\w.]+/i,
+    /\bin the ([\w\s]{3,25}?) section\b/i,
+    /\(page\s*\d+\)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = answerText.match(pattern);
+    if (match) return match[0].replace(/^in the /i, '').trim();
+  }
+  return null;
+}
+
+// ---- Chat interactions ----
+function addMessageRow(role, text) {
+  const row = document.createElement('div');
+  row.className = 'msg-row';
+
+  const msg = document.createElement('div');
+  msg.className = `msg ${role}`;
+  msg.innerHTML = `
+    <div class="role-tag">${role === 'user' ? 'You' : 'DM'}</div>
+    <div class="bubble"></div>
+  `;
+
+  const marginSlot = document.createElement('div');
+  marginSlot.className = 'margin-slot';
+
+  row.appendChild(msg);
+  row.appendChild(marginSlot);
+  messagesEl.appendChild(row);
+
+  const bubble = msg.querySelector('.bubble');
+  bubble.textContent = text;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return { bubble, marginSlot };
+}
+
+function setMarginTag(marginSlot, answerText) {
+  const tagText = extractCitationTag(answerText);
+  marginSlot.innerHTML = '';
+  if (!tagText) return;
+  const tag = document.createElement('div');
+  tag.className = 'tag';
+  tag.textContent = tagText === 'not in doc' ? 'not found here' : `found in ${tagText}`;
+  marginSlot.appendChild(tag);
+}
+
+async function sendQuestion() {
+  const question = questionInput.value.trim();
+  if (!question || !sessionId) return;
+
+  addMessageRow('user', question);
+  questionInput.value = '';
+  questionInput.style.height = 'auto';
+  sendBtn.disabled = true;
+  thinking.style.display = 'block';
+
+  const { bubble: assistantBubble, marginSlot } = addMessageRow('assistant', '');
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, question }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      assistantBubble.textContent = (data.detail && data.detail.message) || 'Something went wrong. Please try again.';
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+
+    thinking.style.display = 'none';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      fullText += decoder.decode(value, { stream: true });
+      renderAssistantText(assistantBubble, fullText);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    setMarginTag(marginSlot, fullText);
+  } catch (err) {
+    assistantBubble.textContent = 'Connection lost while streaming the answer. Please try asking again.';
+  } finally {
+    thinking.style.display = 'none';
+    sendBtn.disabled = false;
+    questionInput.focus();
+  }
+}
+
+sendBtn.addEventListener('click', sendQuestion);
+questionInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuestion();
+  }
+});
+questionInput.addEventListener('input', () => {
+  questionInput.style.height = 'auto';
+  questionInput.style.height = Math.min(questionInput.scrollHeight, 140) + 'px';
+});
+</script>
+</body>
+</html>
